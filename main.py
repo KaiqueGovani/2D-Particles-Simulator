@@ -10,6 +10,45 @@ num_threads = 2
 width, height = 700, 700
 gravity = Vector2(0, 9.81)
 
+class TreeNode:
+    def __init__(self, particle):
+        self.particle = particle
+        self.left = None
+        self.right = None
+
+class ParticleTree:
+    def __init__(self):
+        self.root = None
+
+    def insert(self, particle):
+        if self.root is None:
+            self.root = TreeNode(particle)
+        else:
+            self._insert(self.root, particle)
+
+    def _insert(self, node, particle):
+        if particle.pos.y < node.particle.pos.y:
+            if node.left is None:
+                node.left = TreeNode(particle)
+            else:
+                self._insert(node.left, particle)
+        else:
+            if node.right is None:
+                node.right = TreeNode(particle)
+            else:
+                self._insert(node.right, particle)
+
+    def in_order_traversal(self):
+        particles = []
+        self._in_order_traversal(self.root, particles)
+        return particles
+
+    def _in_order_traversal(self, node, particles):
+        if node:
+            self._in_order_traversal(node.left, particles)
+            particles.append(node.particle)
+            self._in_order_traversal(node.right, particles)
+
 class Helper:
     @classmethod
     def get_color(cls, iteration, step=16):
@@ -77,45 +116,70 @@ class Particle:
                 self.pos -= overlap * distance_vec.normalize()
                 other.pos += overlap * distance_vec.normalize()
 
+class Stack:
+    def __init__(self):
+        self.items = []
+
+    def push(self, item):
+        self.items.append(item)
+
+    def pop(self):
+        if not self.is_empty():
+            return self.items.pop()
+        else:
+            return None
+
+    def is_empty(self):
+        return len(self.items) == 0
 
 class Simulation:
-    def __init__(self, width, height, threads = 1):
+    def __init__(self, width, height, threads=1):
         # Initialize Pygame
         pygame.init()
         self.width = width
         self.height = height
-        self.particles = []
+        self.particles_tree = ParticleTree()
         self.screen = pygame.display.set_mode((width, height))
         self.clock = pygame.time.Clock()
         self.thread_count = threads
 
     def add_particles(self, particles):
-        self.particles.extend(particles)
+        for particle in particles:
+            self.particles_tree.insert(particle)
 
     def update(self, dt):
-        chunk_size = len(self.particles) // self.thread_count
+        particles = self.particles_tree.in_order_traversal()
+        chunk_size = len(particles) // self.thread_count
         threads = []
+        stack = Stack()
         for i in range(self.thread_count):
             start = i * chunk_size
-            end = start + chunk_size if i < self.thread_count - 1 else len(self.particles)
-            thread = threading.Thread(target=self.update_particles, args=(self.particles[start:end], dt))
+            end = start + chunk_size if i < self.thread_count - 1 else len(particles)
+            stack.push((particles[start:end], dt))
+        
+        while not stack.is_empty():
+            particle_chunk, dt = stack.pop()
+            thread = threading.Thread(target=self.update_particles, args=(particle_chunk, dt))
             threads.append(thread)
             thread.start()
+        
         for thread in threads:
             thread.join()
 
     def update_particles(self, particles, dt):
         for particle in particles:
-            particle.accelerate(gravity*100)
+            particle.accelerate(gravity * 100)
             particle.update(dt)
 
     def resolve_collisions(self):
-        for i, particle1 in enumerate(self.particles):
-            for particle2 in self.particles[i+1:]:
+        particles = self.particles_tree.in_order_traversal()
+        for i, particle1 in enumerate(particles):
+            for particle2 in particles[i+1:]:
                 particle1.resolve_collision(particle2)
 
     def draw(self):
-        for particle in self.particles:
+        particles = self.particles_tree.in_order_traversal()
+        for particle in particles:
             particle.draw(self.screen)
 
     def handle_events(self):
@@ -132,23 +196,22 @@ class Simulation:
         running = True
         spawn_delay = 0.1
         while running:
-            dt = self.clock.tick() / 1000.0 # Convert to seconds
+            dt = self.clock.tick() / 1000.0  # Convert to seconds
             self.fps = self.clock.get_fps()
 
-            pygame.display.set_caption(f"FPS: {self.fps:.2f}, Particles: {len(self.particles)}")
+            pygame.display.set_caption(f"FPS: {self.fps:.2f}, Particles: {len(self.particles_tree.in_order_traversal())}")
 
             self.handle_events()
             # Add force if space is pressed
             keys = pygame.key.get_pressed()
             if keys[pygame.K_SPACE]:
-                for particle in self.particles:
+                for particle in self.particles_tree.in_order_traversal():
                     particle.accelerate(Vector2(0, -2000))
-
 
             spawn_delay -= dt
             particles_limit = 100
-            if spawn_delay < 0 and len(self.particles) < particles_limit:
-                spawn_particle = Particle((random.randint(0, width), random.randint(0, height)), 10, Helper.get_color(len(self.particles)))
+            if spawn_delay < 0 and len(self.particles_tree.in_order_traversal()) < particles_limit:
+                spawn_particle = Particle((random.randint(0, width), random.randint(0, height)), 10, Helper.get_color(len(self.particles_tree.in_order_traversal())))
                 self.add_particles([spawn_particle])
                 spawn_delay = 0.1
 
@@ -162,6 +225,6 @@ class Simulation:
 
 if __name__ == "__main__":
     sim = Simulation(width, height, num_threads)
-    spawn_particle = Particle((width/2, height-5), 10, (255, 255, 255))
+    spawn_particle = Particle((width / 2, height - 5), 10, (255, 255, 255))
     sim.add_particles([spawn_particle])
     sim.run()
