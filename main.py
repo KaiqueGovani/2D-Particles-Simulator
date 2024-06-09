@@ -6,7 +6,7 @@ import threading
 import sys
 
 # Constants
-num_threads = 4
+num_threads = 2
 width, height = 700, 700
 gravity = Vector2(0, 9.81)
 
@@ -93,12 +93,26 @@ class Simulation:
         self.particles.extend(particles)
 
     def update(self, dt):
-        for i, particle in enumerate(self.particles):
+        chunk_size = len(self.particles) // self.thread_count
+        threads = []
+        for i in range(self.thread_count):
+            start = i * chunk_size
+            end = start + chunk_size if i < self.thread_count - 1 else len(self.particles)
+            thread = threading.Thread(target=self.update_particles, args=(self.particles[start:end], dt))
+            threads.append(thread)
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+    def update_particles(self, particles, dt):
+        for particle in particles:
             particle.accelerate(gravity*100)
             particle.update(dt)
-            for other_particle in self.particles[i+1:]:
-                particle.resolve_collision(other_particle)
 
+    def resolve_collisions(self):
+        for i, particle1 in enumerate(self.particles):
+            for particle2 in self.particles[i+1:]:
+                particle1.resolve_collision(particle2)
 
     def draw(self):
         for particle in self.particles:
@@ -138,16 +152,13 @@ class Simulation:
                 self.add_particles([spawn_particle])
                 spawn_delay = 0.1
 
-
             self.update(dt)
+            self.resolve_collisions()
 
             self.screen.fill((0, 0, 0))
             self.draw()
 
             pygame.display.flip()
-
-
-    
 
 if __name__ == "__main__":
     sim = Simulation(width, height, num_threads)
