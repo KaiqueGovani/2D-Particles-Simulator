@@ -1,4 +1,5 @@
 from pygame.math import Vector2
+from Helper import Helper
 
 class Particle:
     def __init__(self, pos, radius, color, width, height, mass=1):
@@ -23,12 +24,14 @@ class Particle:
     def update(self, dt):
         # Calculate velocity
         velocity = self.pos - self.prev_pos
+        self.color = Helper.get_color(255 + 85 - velocity.length() * 40)
         # Store previous position
         self.prev_pos = self.pos
         # Perform Verlet integration
         self.pos = self.pos + velocity + (self.acceleration - velocity * 40) * (dt * dt)
         # Reset acceleration
-        self.acceleration *= 0
+        self.acceleration *= 0 
+        
 
         # Check bounds
         self.check_bounds()
