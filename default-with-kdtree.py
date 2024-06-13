@@ -3,6 +3,7 @@ from pygame import Vector2
 from collections import defaultdict
 from Particle import Particle
 from Helper import Helper
+from kdtree import KDTree
 
 # Constants
 num_threads = 1
@@ -28,10 +29,21 @@ class Simulation:
         self.particles.append(particle)
 
     def solve_collisions(self):
+        kdtree = KDTree(self.particles)
+        collision_pairs = []
+        
         for particle in self.particles:
-            for other_particle in self.particles:
-                self.resolve_collision(particle, other_particle)
-                    
+            nearby_particles = kdtree.query(particle.pos, particle.radius * 2)
+            for other in nearby_particles:
+                if other != particle:
+                    collision_pairs.append((particle, other))
+
+        # Usando uma pilha para resolver as colisões
+        collision_stack = collision_pairs[:]
+        while collision_stack:
+            p1, p2 = collision_stack.pop()
+            self.resolve_collision(p1, p2)
+
     def resolve_collision(self, p1: Particle, p2: Particle):
         if p1 is p2:
             return
@@ -42,8 +54,8 @@ class Simulation:
             if not distance_vec.length() == 0:
                 half_overlap = (0.5 * (distance - p1.radius - p2.radius)) * distance_vec.normalize()
                 p1.pos -= half_overlap
-                p2.pos += half_overlap        
-                    
+                p2.pos += half_overlap
+
     def update(self, dt):        
         substeps = 3
         sub_dt = dt / substeps
@@ -55,12 +67,12 @@ class Simulation:
             if keys[pygame.K_SPACE]:
                 for particle in self.particles:
                     particle.accelerate(Vector2(0, -2000))
-        
+
     def update_particles(self, dt):
         for particle in self.particles:
             particle.accelerate(gravity * 100)
             particle.update(dt)
-        
+
     def draw(self):
         for particle in self.particles:
             pygame.draw.circle(self.screen, particle.color, (int(particle.pos.x), int(particle.pos.y)), particle.radius)
@@ -99,16 +111,12 @@ class Simulation:
             elif self.fps < 60 and dt > 0.016:
                 spawn = False
 
-
             self.update(dt)
 
             self.screen.fill((0, 0, 0))
             self.draw()
 
             pygame.display.flip()
-
-
-    
 
 if __name__ == "__main__":
     sim = Simulation(width, height, num_threads)
